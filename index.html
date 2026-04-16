@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NorthStar Scraper</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f4f5f7;
+      color: #1a1a2e;
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    header {
+      background: #1a1a2e;
+      color: #fff;
+      padding: 18px 32px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.25);
+    }
+    header svg { flex-shrink: 0; }
+    header h1 { font-size: 1.25rem; font-weight: 600; letter-spacing: .02em; }
+    header span { font-size: .85rem; opacity: .55; margin-left: 4px; }
+
+    /* ── Main layout ── */
+    main { max-width: 1100px; margin: 32px auto; padding: 0 24px 80px; }
+
+    /* ── Card ── */
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.08);
+      padding: 28px 32px;
+      margin-bottom: 24px;
+    }
+    .card-title {
+      font-size: .7rem;
+      font-weight: 700;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: #888;
+      margin-bottom: 16px;
+    }
+
+    /* ── Form ── */
+    .form-row { display: flex; gap: 12px; flex-wrap: wrap; }
+    .form-group { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 180px; }
+    .form-group.url-group { flex: 2; min-width: 320px; }
+    label { font-size: .78rem; font-weight: 600; color: #555; }
+
+    input[type="text"], input[type="url"] {
+      border: 1.5px solid #ddd;
+      border-radius: 7px;
+      padding: 9px 12px;
+      font-size: .9rem;
+      color: #1a1a2e;
+      transition: border-color .15s;
+      width: 100%;
+      background: #fafafa;
+    }
+    input[type="text"]:focus, input[type="url"]:focus {
+      outline: none;
+      border-color: #4f6ef7;
+      background: #fff;
+    }
+
+    .btn-row { display: flex; justify-content: flex-end; margin-top: 16px; }
+    button.primary {
+      background: #1a1a2e;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 28px;
+      font-size: .9rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: background .15s, transform .1s;
+    }
+    button.primary:hover { background: #2d2d4e; }
+    button.primary:active { transform: scale(.98); }
+    button.primary:disabled { background: #aaa; cursor: not-allowed; }
+
+    /* ── Status banner ── */
+    .status {
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-size: .875rem;
+      font-weight: 500;
+      display: none;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .status.loading { display: flex; background: #eef2ff; color: #3730a3; }
+    .status.success { display: flex; background: #f0fdf4; color: #166534; }
+    .status.error   { display: flex; background: #fef2f2; color: #991b1b; }
+
+    .spinner {
+      width: 18px; height: 18px;
+      border: 2.5px solid currentColor;
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Results section ── */
+    #results-section { display: none; }
+    .results-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .results-header h2 { font-size: 1rem; font-weight: 600; }
+    .badge {
+      background: #eef2ff;
+      color: #4338ca;
+      border-radius: 20px;
+      padding: 3px 12px;
+      font-size: .78rem;
+      font-weight: 700;
+    }
+
+    button.download {
+      background: #16a34a;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 9px 20px;
+      font-size: .875rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      transition: background .15s;
+    }
+    button.download:hover { background: #15803d; }
+
+    /* ── Table ── */
+    .table-wrap {
+      overflow-x: auto;
+      border-radius: 8px;
+      border: 1.5px solid #e5e7eb;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: .855rem;
+    }
+    thead tr { background: #f8f9fb; border-bottom: 2px solid #e5e7eb; }
+    th {
+      text-align: left;
+      padding: 11px 14px;
+      font-size: .72rem;
+      font-weight: 700;
+      letter-spacing: .07em;
+      text-transform: uppercase;
+      color: #6b7280;
+      white-space: nowrap;
+    }
+    tbody tr { border-bottom: 1px solid #f0f0f0; transition: background .1s; }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: #fafbff; }
+
+    td { padding: 8px 10px; vertical-align: middle; }
+
+    /* Editable cell inputs */
+    td input.cell-input {
+      border: 1.5px solid transparent;
+      border-radius: 6px;
+      padding: 5px 8px;
+      font-size: .855rem;
+      width: 100%;
+      background: transparent;
+      color: #1a1a2e;
+      transition: border-color .15s, background .15s;
+    }
+    td input.cell-input:hover { border-color: #d1d5db; background: #f9fafb; }
+    td input.cell-input:focus { outline: none; border-color: #4f6ef7; background: #fff; }
+
+    /* Image cell */
+    .img-cell { display: flex; align-items: center; gap: 8px; min-width: 220px; }
+    .thumb-wrap {
+      width: 44px; height: 44px;
+      border-radius: 6px;
+      overflow: hidden;
+      background: #f3f4f6;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .thumb-wrap img { width: 100%; height: 100%; object-fit: cover; }
+    .thumb-wrap .no-img { font-size: .65rem; color: #aaa; text-align: center; line-height: 1.2; padding: 4px; }
+
+    /* Row number */
+    td.row-num { color: #aaa; font-size: .75rem; width: 32px; text-align: center; }
+  </style>
+</head>
+<body>
+
+<header>
+  <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
+    <polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26" fill="#f59e0b" stroke="#f59e0b" stroke-width="1.5" stroke-linejoin="round"/>
+  </svg>
+  <h1>NorthStar Scraper <span>product data tool</span></h1>
+</header>
+
+<main>
+
+  <!-- Form card -->
+  <div class="card">
+    <div class="card-title">Product Page</div>
+    <div class="form-row">
+      <div class="form-group url-group">
+        <label for="url">URL</label>
+        <input type="url" id="url" placeholder="https://example.com/shop" autocomplete="off" />
+      </div>
+      <div class="form-group">
+        <label for="category">Category</label>
+        <input type="text" id="category" placeholder="e.g. Coffee" />
+      </div>
+      <div class="form-group">
+        <label for="madeby">Made By</label>
+        <input type="text" id="madeby" placeholder="e.g. Acme Roasters" />
+      </div>
+      <div class="form-group">
+        <label for="soldby">Sold By</label>
+        <input type="text" id="soldby" placeholder="e.g. Acme Roasters" />
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="primary" id="scrape-btn" onclick="runScrape()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        Scrape
+      </button>
+    </div>
+  </div>
+
+  <!-- Status banner -->
+  <div class="status" id="status">
+    <div class="spinner" id="spinner"></div>
+    <span id="status-msg"></span>
+  </div>
+
+  <!-- Results section -->
+  <div id="results-section">
+    <div class="card">
+      <div class="results-header">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <h2>Results</h2>
+          <span class="badge" id="count-badge"></span>
+        </div>
+        <button class="download" onclick="downloadCSV()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          Download CSV
+        </button>
+      </div>
+
+      <div class="table-wrap">
+        <table id="results-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Product Name</th>
+              <th>Image</th>
+              <th>Category</th>
+              <th>Made By</th>
+              <th>Sold By</th>
+            </tr>
+          </thead>
+          <tbody id="results-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+  // ── State ──────────────────────────────────────────────────────────────────
+  let tableData = [];
+
+  // ── Scrape ─────────────────────────────────────────────────────────────────
+  async function runScrape() {
+    const url     = document.getElementById('url').value.trim();
+    const category = document.getElementById('category').value.trim();
+    const madeby   = document.getElementById('madeby').value.trim();
+    const soldby   = document.getElementById('soldby').value.trim();
+
+    if (!url) { showStatus('error', 'Please enter a URL.'); return; }
+
+    setBusy(true);
+    showStatus('loading', 'Loading page and detecting products — this may take 15–30 seconds…');
+    document.getElementById('results-section').style.display = 'none';
+
+    try {
+      const res = await fetch('/scrape', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, category, madeby, soldby }),
+      });
+      const json = await res.json();
+
+      if (!res.ok || json.error) {
+        showStatus('error', json.error || 'Scrape failed. Check the URL and try again.');
+        return;
+      }
+
+      tableData = json.products;
+      showStatus('success', `Found ${json.count} product${json.count !== 1 ? 's' : ''}.`);
+      renderTable(tableData);
+    } catch (err) {
+      showStatus('error', 'Could not connect to the scraper server. Is app.py running?');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // ── Table rendering ────────────────────────────────────────────────────────
+  function renderTable(products) {
+    const tbody = document.getElementById('results-body');
+    tbody.innerHTML = '';
+
+    products.forEach((p, i) => {
+      const tr = document.createElement('tr');
+      tr.dataset.idx = i;
+
+      // Row number
+      const tdNum = document.createElement('td');
+      tdNum.className = 'row-num';
+      tdNum.textContent = i + 1;
+      tr.appendChild(tdNum);
+
+      // Product name
+      tr.appendChild(editableCell(i, 'product_name', p.product_name, '200px'));
+
+      // Image cell (thumbnail + editable URL)
+      const tdImg = document.createElement('td');
+      const imgDiv = document.createElement('div');
+      imgDiv.className = 'img-cell';
+
+      const thumbWrap = document.createElement('div');
+      thumbWrap.className = 'thumb-wrap';
+      thumbWrap.id = `thumb-${i}`;
+      updateThumb(thumbWrap, p.product_image);
+
+      const urlInput = document.createElement('input');
+      urlInput.className = 'cell-input';
+      urlInput.value = p.product_image || '';
+      urlInput.placeholder = 'Image URL';
+      urlInput.style.minWidth = '160px';
+      urlInput.addEventListener('input', () => {
+        tableData[i].product_image = urlInput.value;
+        updateThumb(thumbWrap, urlInput.value);
+      });
+
+      imgDiv.appendChild(thumbWrap);
+      imgDiv.appendChild(urlInput);
+      tdImg.appendChild(imgDiv);
+      tr.appendChild(tdImg);
+
+      // Category, Made By, Sold By
+      tr.appendChild(editableCell(i, 'category',    p.category,    '130px'));
+      tr.appendChild(editableCell(i, 'madeby_name', p.madeby_name, '150px'));
+      tr.appendChild(editableCell(i, 'soldby_name', p.soldby_name, '150px'));
+
+      tbody.appendChild(tr);
+    });
+
+    document.getElementById('count-badge').textContent = products.length + ' products';
+    document.getElementById('results-section').style.display = 'block';
+  }
+
+  function editableCell(rowIdx, field, value, minWidth) {
+    const td = document.createElement('td');
+    const inp = document.createElement('input');
+    inp.className = 'cell-input';
+    inp.value = value || '';
+    inp.style.minWidth = minWidth;
+    inp.addEventListener('input', () => { tableData[rowIdx][field] = inp.value; });
+    td.appendChild(inp);
+    return td;
+  }
+
+  function updateThumb(wrap, url) {
+    wrap.innerHTML = '';
+    if (url && url.startsWith('http')) {
+      const img = document.createElement('img');
+      img.src = url;
+      img.alt = '';
+      img.onerror = () => {
+        wrap.innerHTML = '<span class="no-img">No image</span>';
+      };
+      wrap.appendChild(img);
+    } else {
+      wrap.innerHTML = '<span class="no-img">No image</span>';
+    }
+  }
+
+  // ── CSV download ───────────────────────────────────────────────────────────
+  function downloadCSV() {
+    if (!tableData.length) return;
+
+    const COLS = ['product_name', 'product_image', 'category', 'madeby_name', 'soldby_name'];
+    const LABELS = ['product_name', 'product_image', 'category', 'madeby_name', 'soldby_name'];
+
+    const escape = v => `"${(v || '').replace(/"/g, '""')}"`;
+
+    const rows = [
+      LABELS.map(escape).join(','),
+      ...tableData.map(p => COLS.map(c => escape(p[c] || '')).join(','))
+    ];
+
+    const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'northstar_products.csv';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  // ── UI helpers ─────────────────────────────────────────────────────────────
+  function showStatus(type, msg) {
+    const el  = document.getElementById('status');
+    const sp  = document.getElementById('spinner');
+    const txt = document.getElementById('status-msg');
+    el.className = `status ${type}`;
+    sp.style.display = type === 'loading' ? 'block' : 'none';
+    txt.textContent = msg;
+  }
+
+  function setBusy(busy) {
+    const btn = document.getElementById('scrape-btn');
+    btn.disabled = busy;
+    btn.innerHTML = busy
+      ? '<div class="spinner" style="width:15px;height:15px;border-width:2px"></div> Scraping…'
+      : `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Scrape`;
+  }
+
+  // Enter key on URL field triggers scrape
+  document.getElementById('url').addEventListener('keydown', e => {
+    if (e.key === 'Enter') runScrape();
+  });
+</script>
+</body>
+</html>
