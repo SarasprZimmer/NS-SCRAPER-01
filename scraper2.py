@@ -27,9 +27,11 @@ from playwright.async_api import async_playwright
 CSV_HEADERS = [
     "product_name",
     "product_image",
+    "price",
     "category",
     "madeby_name",
     "soldby_name",
+    "soldby_link",
 ]
 
 
@@ -151,15 +153,94 @@ def infer_category(name: str, description: str) -> str:
     return ""
 
 
-def make_product(name, image, base_url, description="", madeby="", soldby="") -> dict:
+def make_product(name, image, base_url, description="", madeby="", soldby="", soldby_link="", price="") -> dict:
     category = infer_category(name, description)
     return {
         "product_name":  name,
         "product_image": absolute_url(base_url, image),
+        "price":         price,
         "category":      category,
         "madeby_name":   madeby,
         "soldby_name":   soldby,
+        "soldby_link":   soldby_link,
     }
+
+
+# Button / badge text that sometimes gets prepended to product names on card hover overlays.
+_STRIP_PREFIXES = [
+    "quick view ", "quick shop ", "view product ", "view item ",
+    "add to cart ", "buy now ", "shop now ",
+]
+
+# Terms that are definitely NOT product names — nav links, UI buttons, page labels.
+_NON_PRODUCT_NAMES = {
+    # Navigation
+    "home","about","about us","contact","contact us","menu","shop","store",
+    "all products","our products","all items","collections","browse",
+    "testimonials","reviews","blog","news","faq","press","careers",
+    "privacy policy","terms","terms of service","sitemap","accessibility",
+    # Account / cart UI
+    "my account","log in","login","sign in","sign up","register",
+    "cart","checkout","wish list","wishlist",
+    # Generic page labels
+    "search","newsletter","subscribe","follow us","social media",
+    "back to top","load more","show more","see more","read more",
+    "learn more","view more","explore","discover","get started",
+    # Product card UI buttons (not names)
+    "quick view","quick shop","view details","add to cart","buy now",
+    "shop now","order now","select options","choose options","view product",
+    "view item","see details","more info","out of stock","sold out",
+    # Single-word generic
+    "new","sale","featured","popular","trending","best seller",
+}
+
+# Regex that matches a price appended/prepended to a product name, e.g.:
+#   "Ethiopia Natural $18.00"  →  price "$18.00",  name "Ethiopia Natural"
+#   "$12.50 Colombia Washed"   →  price "$12.50",  name "Colombia Washed"
+#   "Decaf Blend £9.99"        →  price "£9.99",   name "Decaf Blend"
+_PRICE_RE = re.compile(
+    r'(?:^|\s)([£$€¥₹]\s?\d[\d,]*(?:\.\d{1,2})?'   # leading symbol: $12.00
+    r'|\d[\d,]*(?:\.\d{1,2})?\s?[£$€¥₹]'             # trailing symbol: 12.00$
+    r'|\d[\d,]*(?:\.\d{1,2})?\s?(?:USD|EUR|GBP|CAD|AUD))',  # ISO code: 12.00 USD
+    re.IGNORECASE
+)
+
+def filter_products(products: list) -> list:
+    """Remove navigation items / UI buttons; strip button-text prefixes from names."""
+    out = []
+    for p in products:
+        name = p["product_name"].strip()
+
+        # Strip leading button/badge text (e.g. "Quick View Peru Organic" → "Peru Organic")
+        lower = name.lower()
+        for prefix in _STRIP_PREFIXES:
+            if lower.startswith(prefix):
+                name  = name[len(prefix):].strip()
+                lower = name.lower()
+                break  # only strip one prefix
+
+        # If no price was scraped separately, try to extract it from the name
+        p = dict(p)
+        if not p.get("price"):
+            m = _PRICE_RE.search(name)
+            if m:
+                p["price"] = m.group(0).strip()
+                name = (name[:m.start()] + name[m.end():]).strip()
+
+        p["product_name"] = name
+
+        name_lower = name.lower()
+        # Exact match against blocked list
+        if name_lower in _NON_PRODUCT_NAMES:
+            continue
+        # Very short names are rarely real products (single letters / symbols)
+        if len(name) < 3:
+            continue
+        # Names that are ALL uppercase short strings tend to be nav labels
+        if name.isupper() and len(name) < 6:
+            continue
+        out.append(p)
+    return out
 
 def deduplicate(products: list) -> list:
     seen, unique = set(), []
@@ -172,6 +253,156 @@ def deduplicate(products: list) -> list:
 
 
 # =============================================================================
+# PAGINATION
+# =============================================================================
+
+NEXT_LINK_TEXTS = {
+    "next", "next page", "›", "»", "→", ">", "load more", "show more",
+    "next »", "next ›", "next →", "older posts", "more products",
+}
+
+async def find_next_page(page, current_url: str) -> str:
+    """
+    Look for a Next page link in the DOM and return its absolute URL.
+    Returns "" if no next page is found.
+
+    Checks three things in order:
+    1. <a> tags whose visible text matches known next-page labels
+    2. <a rel="next">  (standard HTML pagination rel attribute)
+    3. <link rel="next"> in <head>  (SEO pagination hint)
+    """
+    # Strategy 1: visible link text
+    anchors = await page.query_selector_all("a[href]")
+    for anchor in anchors:
+        text = clean(await anchor.inner_text()).lower()
+        href = await anchor.get_attribute("href") or ""
+        aria = (await anchor.get_attribute("aria-label") or "").lower()
+        if (text in NEXT_LINK_TEXTS or aria in NEXT_LINK_TEXTS):
+            if href and not href.startswith("#"):
+                return absolute_url(current_url, href)
+
+    # Strategy 2: rel="next" on an <a> tag
+    rel_next = await page.query_selector("a[rel='next']")
+    if rel_next:
+        href = await rel_next.get_attribute("href") or ""
+        if href and not href.startswith("#"):
+            return absolute_url(current_url, href)
+
+    # Strategy 3: <link rel="next"> in <head>
+    link_next = await page.query_selector("link[rel='next']")
+    if link_next:
+        href = await link_next.get_attribute("href") or ""
+        if href:
+            return absolute_url(current_url, href)
+
+    return ""
+
+
+async def find_product_link(container_el, base_url: str) -> str:
+    """
+    Extract the product detail page URL from a product card element.
+    Tries (in order):
+      1. Container itself is an <a>
+      2. Title/heading element has an <a> ancestor within the card
+      3. Image is wrapped in an <a>
+      4. First non-button <a> found anywhere in the card
+    Returns an absolute URL, or "" if nothing found.
+    """
+    raw = await container_el.evaluate("""el => {
+        const SKIP_TEXT  = ['add to cart','buy now','shop now','select options',
+                            'view cart','checkout','more info','read more'];
+        const SKIP_CLASS = ['add_to_cart','cart-button','buy-button','checkout'];
+
+        function ok(a) {
+            const href = (a.getAttribute('href') || '').trim();
+            if (!href || href === '#' || href.startsWith('javascript:')) return false;
+            // Skip obvious social / mailto / tel links
+            if (/^(mailto:|tel:|#|https?:\/\/(www\.)?(facebook|twitter|instagram|tiktok|linkedin))/i.test(href)) return false;
+            const txt = (a.textContent || '').toLowerCase().trim();
+            if (SKIP_TEXT.includes(txt)) return false;
+            const cls = (a.getAttribute('class') || '').toLowerCase();
+            if (SKIP_CLASS.some(s => cls.includes(s))) return false;
+            return true;
+        }
+
+        // 1. Container is itself a link
+        if (el.tagName === 'A' && ok(el)) return el.getAttribute('href');
+
+        // 2. Title/heading has an <a> ancestor inside the card
+        const heading = el.querySelector('h1,h2,h3,h4,.product-title,.product-name,[class*="title"],[class*="name"]');
+        if (heading) {
+            // heading wrapped in <a>
+            let node = heading.parentElement;
+            while (node && node !== el) {
+                if (node.tagName === 'A' && ok(node)) return node.getAttribute('href');
+                node = node.parentElement;
+            }
+            // <a> inside the heading
+            const aIn = heading.querySelector('a');
+            if (aIn && ok(aIn)) return aIn.getAttribute('href');
+        }
+
+        // 3. Image is wrapped in an <a>
+        const img = el.querySelector('img');
+        if (img) {
+            let node = img.parentElement;
+            while (node && node !== el) {
+                if (node.tagName === 'A' && ok(node)) return node.getAttribute('href');
+                node = node.parentElement;
+            }
+        }
+
+        // 4. First qualifying <a> anywhere in the card
+        for (const a of el.querySelectorAll('a')) {
+            if (ok(a)) return a.getAttribute('href');
+        }
+
+        return '';
+    }""")
+    if raw:
+        return absolute_url(base_url, raw)
+    return ""
+
+
+async def find_heading_link(heading_el, base_url: str) -> str:
+    """
+    Find the product link from a standalone heading element (heading strategy).
+    Walks up ancestors looking for an <a>, then checks sibling/parent containers.
+    """
+    raw = await heading_el.evaluate("""el => {
+        function ok(a) {
+            const href = (a.getAttribute('href') || '').trim();
+            if (!href || href === '#' || href.startsWith('javascript:')) return false;
+            if (/^(mailto:|tel:|https?:\/\/(www\.)?(facebook|twitter|instagram|tiktok|linkedin))/i.test(href)) return false;
+            return true;
+        }
+        // Walk up from heading to find <a> ancestor (heading inside a link)
+        let node = el.parentElement;
+        for (let i = 0; i < 8; i++) {
+            if (!node || node === document.body) break;
+            if (node.tagName === 'A' && ok(node)) return node.getAttribute('href');
+            node = node.parentElement;
+        }
+        // <a> inside the heading text
+        const aIn = el.querySelector('a');
+        if (aIn && ok(aIn)) return aIn.getAttribute('href');
+        // Walk up and look for any <a> sibling in the same product block
+        node = el.parentElement;
+        if (node) {
+            for (const sib of node.children) {
+                if (sib.tagName === 'A' && ok(sib)) return sib.getAttribute('href');
+                const a = sib.querySelector('a');
+                if (a && ok(a)) return a.getAttribute('href');
+            }
+        }
+        return '';
+    }""")
+    if raw:
+        return absolute_url(base_url, raw)
+    return ""
+
+
+# =============================================================================
 # STAGE 1 - DETECTOR
 # =============================================================================
 
@@ -179,6 +410,25 @@ async def detect(page, url: str) -> Blueprint:
     html     = await page.content()
     platform = detect_platform(html, url)
     print(f"  -> Platform hint: {platform}")
+
+    # ── Wix category-page guard ───────────────────────────────────────────────
+    # On Wix stores, /all-products and similar pages sometimes show category
+    # tiles (Single Origin, Blends, Decaf …) that share the data-hook but have
+    # NO product images.  If we detect this layout, bail out immediately — the
+    # weaker fallback strategies (heading-grid, list-items) would just scrape the
+    # same tiles and call them products.
+    if platform == "wix":
+        wix_items = await page.query_selector_all("[data-hook='product-item']")
+        if len(wix_items) >= 2:
+            imgs_found = 0
+            for el in wix_items[:8]:
+                if await el.query_selector("img"):
+                    imgs_found += 1
+            if imgs_found == 0:
+                print("  ! Wix category-listing page detected (no product images).")
+                print("    Tip: try a sub-category URL (e.g. /single-origin, /blends)")
+                return Blueprint(strategy="none", platform=platform,
+                                 notes=["Wix category page — no product images on tiles"])
 
     strategies = [
         detect_jsonld,
@@ -198,6 +448,7 @@ async def detect(page, url: str) -> Blueprint:
             return bp
 
     return Blueprint(strategy="none", platform=platform)
+
 
 
 def detect_platform(html: str, url: str) -> str:
@@ -240,6 +491,11 @@ async def detect_jsonld(page, url: str, platform: str) -> Blueprint:
 
 async def detect_data_attributes(page, url: str, platform: str) -> Blueprint:
     candidates = [
+        # Wix Stores — use the dedicated data-hook name element; do NOT fall back
+        # to h3/.title because category nav tiles share the same product-item
+        # hook but only have heading text, no product images.
+        ("[data-hook='product-item']",  "[data-hook='product-item-name']", "img", "p"),
+        # Generic data-attribute patterns
         ("[data-product-id]", "h2, h3, .product-title, .title", "img", "p, .description"),
         ("[data-product]",    "h2, h3, .title",                 "img", "p"),
         ("[data-item-id]",    "h2, h3",                         "img", "p"),
@@ -248,12 +504,20 @@ async def detect_data_attributes(page, url: str, platform: str) -> Blueprint:
         els = await page.query_selector_all(container_sel)
         if len(els) < 2:
             continue
+        sample = els[:8]
         names_found = 0
-        for el in els[:5]:
+        imgs_found  = 0
+        for el in sample:
             n = await el.query_selector(name_sel)
             if n and clean(await n.inner_text()):
                 names_found += 1
-        if names_found >= 2:
+            if await el.query_selector("img"):
+                imgs_found += 1
+        # Require ≥2 names AND that most sampled containers have images.
+        # This prevents matching Wix category-navigation tiles that share
+        # the same data-hook as product cards but have no product images.
+        min_imgs = max(2, len(sample) // 2)
+        if names_found >= 2 and imgs_found >= min_imgs:
             return Blueprint(
                 strategy="container",
                 container_sel=container_sel,
@@ -391,8 +655,12 @@ async def detect_heading_grid(page, url: str, platform: str) -> Blueprint:
 
         matched = sum(1 for n in names if n.lower() in alts)
 
-        ECOMMERCE_PLATFORMS = {"wix", "woocommerce", "shopify", "squarespace", "webflow"}
-        if matched >= 2 or (platform in ECOMMERCE_PLATFORMS and len(names) >= 4):
+        # Always require ≥2 headings whose text actually matches an image alt-text.
+        # Removed the old Wix/ecommerce platform shortcut ("any 4+ headings on a
+        # known platform") — that shortcut caused category nav tiles (Single Origin,
+        # Blends, Decaf…) to be accepted as products because they're headings on a
+        # Wix page but have zero associated product images.
+        if matched >= 2:
             return Blueprint(
                 strategy="heading",
                 name_sel=tag,
@@ -410,9 +678,13 @@ async def detect_list_items(page, url: str, platform: str) -> Blueprint:
     for sel in [
         # WooCommerce / Elementor loop
         "li.product", ".e-loop-item", ".type-product", "[class*='loop-item']",
-        # Generic fallbacks
-        "li", "article", ".menu-item", "[class*='entry']",
+        # Generic fallbacks — skip bare 'li' on Wix: Wix surfaces products via
+        # data-hook attributes, so bare <li> matches are always nav category tiles.
+        "li" if platform != "wix" else None,
+        "article", ".menu-item", "[class*='entry']",
     ]:
+        if sel is None:
+            continue
         els = await page.query_selector_all(sel)
         if len(els) < 2:
             continue
@@ -422,7 +694,9 @@ async def detect_list_items(page, url: str, platform: str) -> Blueprint:
             img  = await el.query_selector("img")
             if img and 2 < len(text) < 600:
                 product_like += 1
-        if product_like >= 3:
+        # For the broad 'li' selector, require more matches to avoid nav menus.
+        min_count = 6 if sel == "li" else 3
+        if product_like >= min_count:
             name_sel = await probe_name_selector(page, sel)
             desc_sel = await probe_desc_selector(page, sel, name_sel)
             if name_sel:
@@ -492,6 +766,39 @@ async def probe_desc_selector(page, container_sel: str, name_sel: str) -> str:
     return ""
 
 
+async def probe_price(container) -> str:
+    """
+    Try common price selectors on a single product container element.
+    Returns the cleaned price string (e.g. '$14.00') or ''.
+    """
+    PRICE_SELS = [
+        # Wix
+        "[data-hook='product-item-price-to-pay']",
+        "[data-hook='product-item-price']",
+        "[data-hook='price-range-from']",
+        # Shopify
+        ".price", ".product-price", ".price__current",
+        "[class*='price']",
+        # WooCommerce
+        ".woocommerce-Price-amount", ".amount",
+        # Generic
+        "[class*='Price']", "[class*='cost']",
+        "[itemprop='price']",
+    ]
+    for sel in PRICE_SELS:
+        el = await container.query_selector(sel)
+        if not el:
+            continue
+        # Prefer data attribute for machine-readable value
+        raw = (await el.get_attribute("data-price")
+               or await el.get_attribute("content")
+               or await el.inner_text() or "")
+        text = clean(raw)
+        if text and len(text) < 30:   # sanity: don't grab a whole paragraph
+            return text
+    return ""
+
+
 # =============================================================================
 # STAGE 2 - EXTRACTOR
 # =============================================================================
@@ -525,9 +832,23 @@ async def extract_jsonld(page, base_url: str) -> list:
                     if isinstance(brand, dict):
                         brand = brand.get("name", "")
                     if name:
+                        prod_url = item.get("url", item.get("@id", ""))
+                        if prod_url and not prod_url.startswith("http"):
+                            prod_url = absolute_url(base_url, prod_url)
+                        # Price from JSON-LD offers
+                        price = ""
+                        offers = item.get("offers", {})
+                        if isinstance(offers, list):
+                            offers = offers[0] if offers else {}
+                        if isinstance(offers, dict):
+                            p_val = offers.get("price", offers.get("lowPrice", ""))
+                            cur   = offers.get("priceCurrency", "")
+                            if p_val:
+                                price = f"{cur} {p_val}".strip() if cur else str(p_val)
                         products.append(make_product(
                             name, image, base_url,
-                            description=desc, madeby=brand
+                            description=desc, madeby=brand,
+                            soldby_link=prod_url, price=price
                         ))
                 elif t in ("ItemList", "CollectionPage"):
                     for li in item.get("itemListElement", []):
@@ -535,9 +856,12 @@ async def extract_jsonld(page, base_url: str) -> list:
                         name = clean(sub.get("name", ""))
                         desc = clean(sub.get("description", ""))
                         if name:
+                            prod_url = sub.get("url", sub.get("@id", ""))
+                            if prod_url and not prod_url.startswith("http"):
+                                prod_url = absolute_url(base_url, prod_url)
                             products.append(make_product(
                                 name, sub.get("image", ""), base_url,
-                                description=desc
+                                description=desc, soldby_link=prod_url
                             ))
         except Exception:
             continue
@@ -586,7 +910,9 @@ async def extract_containers(page, bp: Blueprint, base_url: str) -> list:
                 if text and text.lower() != name.lower() and len(text) > 10:
                     desc = text
 
-        products.append(make_product(name, image, base_url))
+        price = await probe_price(container)
+        link  = await find_product_link(container, base_url)
+        products.append(make_product(name, image, base_url, soldby_link=link, price=price))
     return products
 
 
@@ -658,7 +984,10 @@ async def extract_headings(page, bp: Blueprint, base_url: str) -> list:
                 return '';
             }""") or ""
 
-        products.append(make_product(name, image, base_url))
+        link  = await find_heading_link(heading, base_url)
+        products.append(make_product(name, image, base_url, soldby_link=link))
+        # Note: price is not probed here (no container element); filter_products
+        # will extract it from the name if a price string is concatenated into it.
     return products
 
 
@@ -702,6 +1031,7 @@ def apply_metadata(products: list, metadata: dict) -> list:
             p["madeby_name"] = metadata["madeby_name"]
         if metadata["soldby_name"]:
             p["soldby_name"] = metadata["soldby_name"]
+        # soldby_link is auto-scraped — never overwritten by metadata
     return products
 
 
@@ -740,15 +1070,18 @@ async def scrape(url: str, output: str):
         )
         page = await context.new_page()
 
+        async def load_page(target_url):
+            try:
+                await page.goto(target_url, wait_until="networkidle", timeout=35000)
+            except Exception as e:
+                print(f"  ! Timeout ({e.__class__.__name__}), continuing with what loaded...")
+            await page.wait_for_timeout(2500)
+
         print("-> Loading page...")
-        try:
-            await page.goto(url, wait_until="networkidle", timeout=35000)
-        except Exception as e:
-            print(f"  ! Timeout ({e.__class__.__name__}), continuing with what loaded...")
+        await load_page(url)
 
-        await page.wait_for_timeout(2500)
-
-        # Stage 1: Detect
+        # Stage 1: Detect structure on first page only.
+        # The blueprint is reused for every subsequent page.
         print("-> Detecting page structure...")
         blueprint = await detect(page, url)
 
@@ -760,11 +1093,35 @@ async def scrape(url: str, output: str):
             await browser.close()
             sys.exit(1)
 
-        # Stage 2: Extract
-        print("-> Extracting products...")
-        products = await extract(page, blueprint, url)
-        products = deduplicate(products)
+        # Stage 2: Paginated extraction loop.
+        # Detect runs once, extract runs on every page.
+        all_products = []
+        current_url  = url
+        page_num     = 1
+        MAX_PAGES    = 50  # safety cap
 
+        while True:
+            print(f"-> Extracting page {page_num}...")
+            page_products = await extract(page, blueprint, current_url)
+            all_products.extend(page_products)
+            print(f"   {len(page_products)} products on this page "
+                  f"({len(all_products)} total so far)")
+
+            if page_num >= MAX_PAGES:
+                print(f"  ! Reached {MAX_PAGES}-page safety cap, stopping.")
+                break
+
+            next_url = await find_next_page(page, current_url)
+            if not next_url or next_url == current_url:
+                print(f"  -> No next page found, done.")
+                break
+
+            print(f"  -> Next page: {next_url}")
+            current_url = next_url
+            page_num   += 1
+            await load_page(current_url)
+
+        products = filter_products(deduplicate(all_products))
         await browser.close()
 
     if not products:
@@ -813,27 +1170,51 @@ async def run_scrape(url: str) -> tuple:
                 viewport={"width": 1280, "height": 900},
             )
             page = await context.new_page()
-            try:
-                await page.goto(url, wait_until="networkidle", timeout=35000)
-            except Exception:
-                pass
-            await page.wait_for_timeout(2500)
+
+            async def load_page_rs(target_url):
+                try:
+                    await page.goto(target_url, wait_until="networkidle", timeout=35000)
+                except Exception:
+                    pass
+                await page.wait_for_timeout(2500)
+
+            await load_page_rs(url)
 
             blueprint = await detect(page, url)
             if blueprint.strategy == "none":
                 await browser.close()
-                return [], "Could not detect a product pattern on this page."
+                msg = (blueprint.notes[0] if blueprint.notes
+                       else "Could not detect a product pattern on this page.")
+                return [], msg
 
-            products = await extract(page, blueprint, url)
-            products = deduplicate(products)
+            all_products = []
+            current_url  = url
+            page_num     = 1
+            MAX_PAGES    = 50
+
+            while True:
+                page_products = await extract(page, blueprint, current_url)
+                all_products.extend(page_products)
+
+                if page_num >= MAX_PAGES:
+                    break
+                next_url = await find_next_page(page, current_url)
+                if not next_url:
+                    break
+                current_url = next_url
+                page_num   += 1
+                await load_page_rs(current_url)
+
+            products = filter_products(deduplicate(all_products))
             await browser.close()
 
-            if not products:
-                return [], "Detection found a pattern but no products were extracted."
+        if not products:
+            return [], "Detection found a pattern but extraction returned no products."
 
-            return products, ""
-    except Exception as e:
-        return [], str(e)
+        return products, ""
+
+    except Exception as exc:
+        return [], str(exc)
 
 
 def main():

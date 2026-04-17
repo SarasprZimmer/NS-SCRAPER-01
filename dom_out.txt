@@ -1,0 +1,68 @@
+﻿
+Inspecting: https://www.overmountaincoffee.com/all-products
+ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+Loading page (waiting up to 40s)...
+Page HTML size: 1,184,418 bytes
+
+TOP CLASS NAMES (most frequent first):
+   45x  .wixui-rich-text__text
+   40x  .Wo6AuW
+   40x  .vALCqq
+   40x  .sLKIbnk
+   40x  .oAYn7ux---resize-5-cover
+   40x  .oAYn7ux--fluid
+   40x  .oAYn7ux--stretchImage
+   40x  .oAYn7ux--verticalContainer
+   40x  .s__65YAB3
+   40x  .fNMon8
+   40x  .QHl0ZB
+   40x  .sSKK6OY
+   40x  .ntj2AV
+   20x  .ejYUwA
+   20x  .ETPbIy
+   20x  .KJlsir
+   20x  .AJctir
+   20x  .bGFTjD
+   20x  .qc8uk6
+   20x  .pLiK7U
+   20x  .mS0yET
+   20x  .C0cH_M
+   20x  .heightByImageRatio
+   20x  .heightByImageRatio2
+   20x  .TNRewc
+   20x  .TUWFt6
+   20x  .MjPCb2
+   20x  .CZ0KIs
+   20x  .Jzh04F
+   20x  .JPDEZd
+   20x  .t2u_rw
+   20x  .EiRAO9
+   20x  .s__1cw9Zx
+   20x  .omktmJU---typography-11-runningText
+   20x  .omktmJU---priority-7-primary
+   20x  .syHtuvM
+   20x  .FzO_a9
+   20x  .T2QOcV
+   20x  .UqnnNN
+   20x  .briESr
+
+SELECTOR PROBE:
+  li                                  ΓåÆ  35 els | <li class='L3ZIQx wixui-dropdown-menu__item pr7XQM'> | 'Home'
+  div[class]                          ΓåÆ 554 els | <div class='main_MF'> | 'Skip to Main Content  Home  Coffee  About  Testimonials  Mor'
+  [class*='item']                     ΓåÆ   6 els | <li class='L3ZIQx wixui-dropdown-menu__item pr7XQM'> | 'Home'
+  ul li                               ΓåÆ  35 els | <li class='L3ZIQx wixui-dropdown-menu__item pr7XQM'> | 'Home'
+
+HEADINGS ON PAGE:
+  h2: 1 total | first few: ['Over-Mountain For Business Request A Quote For You']
+  h4: 1 total | first few: ['Local Order Pickup For Our Customers In The TRI Ci']
+
+IMAGES: 46 total
+  src='https://static.wixstatic.com/media/eb1820_dfd880ba48a34750b87286530b71' alt='Over Mountain Logo' class='BI8PVQ Tj01hh'
+  src='https://static.wixstatic.com/media/3b86be8b75c276fe06abfb9c8f473244.pn' alt='Old Paper Transparent' class=''
+  src='https://static.wixstatic.com/media/eb1820_ef57260f9e6247bda87049bee6c0' alt='Brazil Natural' class=''
+  src='https://static.wixstatic.com/media/eb1820_4208ef994e3b44ea9bcee6b21e60' alt='Brazil Flag' class=''
+
+JSON-LD BLOCKS: 0
+
+ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+Copy the class names above and share them ΓÇö we'll update the scraper selectors.

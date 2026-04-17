@@ -280,9 +280,11 @@
               <th>#</th>
               <th>Product Name</th>
               <th>Image</th>
+              <th>Price</th>
               <th>Category</th>
               <th>Made By</th>
               <th>Sold By</th>
+              <th>Buy Link</th>
             </tr>
           </thead>
           <tbody id="results-body"></tbody>
@@ -303,6 +305,7 @@
     const category = document.getElementById('category').value.trim();
     const madeby   = document.getElementById('madeby').value.trim();
     const soldby   = document.getElementById('soldby').value.trim();
+
 
     if (!url) { showStatus('error', 'Please enter a URL.'); return; }
 
@@ -376,16 +379,49 @@
       tdImg.appendChild(imgDiv);
       tr.appendChild(tdImg);
 
-      // Category, Made By, Sold By
+      // Category, Price, Made By, Sold By, Buy Link
+      tr.appendChild(editableCell(i, 'price',       p.price,       '90px'));
       tr.appendChild(editableCell(i, 'category',    p.category,    '130px'));
       tr.appendChild(editableCell(i, 'madeby_name', p.madeby_name, '150px'));
       tr.appendChild(editableCell(i, 'soldby_name', p.soldby_name, '150px'));
+      tr.appendChild(linkCell(i, 'soldby_link', p.soldby_link, '200px'));
 
       tbody.appendChild(tr);
     });
 
     document.getElementById('count-badge').textContent = products.length + ' products';
     document.getElementById('results-section').style.display = 'block';
+  }
+
+  // Special cell for URLs — shows a clickable preview icon + editable input
+  function linkCell(rowIdx, field, value, minWidth) {
+    const td = document.createElement('td');
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'display:flex;align-items:center;gap:6px;';
+
+    const icon = document.createElement('a');
+    icon.target = '_blank';
+    icon.rel = 'noopener noreferrer';
+    icon.title = 'Open link';
+    icon.style.cssText = 'flex-shrink:0;color:#4f6ef7;opacity:' + (value ? '1' : '0.25') + ';text-decoration:none;font-size:13px;';
+    icon.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>`;
+    if (value) icon.href = value;
+
+    const inp = document.createElement('input');
+    inp.className = 'cell-input';
+    inp.value = value || '';
+    inp.placeholder = 'Product URL';
+    inp.style.minWidth = minWidth;
+    inp.addEventListener('input', () => {
+      tableData[rowIdx][field] = inp.value;
+      icon.href = inp.value || '#';
+      icon.style.opacity = inp.value ? '1' : '0.25';
+    });
+
+    wrap.appendChild(icon);
+    wrap.appendChild(inp);
+    td.appendChild(wrap);
+    return td;
   }
 
   function editableCell(rowIdx, field, value, minWidth) {
@@ -418,8 +454,8 @@
   function downloadCSV() {
     if (!tableData.length) return;
 
-    const COLS = ['product_name', 'product_image', 'category', 'madeby_name', 'soldby_name'];
-    const LABELS = ['product_name', 'product_image', 'category', 'madeby_name', 'soldby_name'];
+    const COLS   = ['product_name', 'product_image', 'price', 'category', 'madeby_name', 'soldby_name', 'soldby_link'];
+    const LABELS = ['product_name', 'product_image', 'price', 'category', 'madeby_name', 'soldby_name', 'soldby_link'];
 
     const escape = v => `"${(v || '').replace(/"/g, '""')}"`;
 
