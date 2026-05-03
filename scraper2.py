@@ -30,7 +30,9 @@ CSV_HEADERS = [
     "price",
     "category",
     "madeby_name",
+    "madeby_image",
     "soldby_name",
+    "soldby_image",
     "soldby_link",
 ]
 
@@ -161,7 +163,9 @@ def make_product(name, image, base_url, description="", madeby="", soldby="", so
         "price":         price,
         "category":      category,
         "madeby_name":   madeby,
+        "madeby_image":  "",
         "soldby_name":   soldby,
+        "soldby_image":  "",
         "soldby_link":   soldby_link,
     }
 
@@ -1009,28 +1013,52 @@ def prompt_metadata(products: list) -> dict:
         print(f"  - ... and {len(products) - 5} more")
     print()
 
-    category = input("Category  (e.g. Coffee, Tea, Pastry):          ").strip()
-    madeby   = input("Made By   (e.g. Overmountain Coffee Roasters):  ").strip()
-    soldby   = input("Sold By   (e.g. Overmountain Coffee Roasters):  ").strip()
+    category     = input("Category  (e.g. Coffee, Tea, Pastry):          ").strip()
+    madeby       = input("Made By   (e.g. Overmountain Coffee Roasters):  ").strip()
+    soldby       = input("Sold By   (e.g. Overmountain Coffee Roasters):  ").strip()
+    madeby_image = input("Made By Logo URL:                               ").strip()
+    soldby_image = input("Sold By Logo URL:                               ").strip()
 
     print()
-    for label, val in [("Category", category), ("Made By", madeby), ("Sold By", soldby)]:
+    for label, val in [
+        ("Category",         category),
+        ("Made By",          madeby),
+        ("Sold By",          soldby),
+        ("Made By Logo URL", madeby_image),
+        ("Sold By Logo URL", soldby_image),
+    ]:
         if val:
             print(f"  + {label} -> '{val}'")
-    if not any([category, madeby, soldby]):
+    if not any([category, madeby, soldby, madeby_image, soldby_image]):
         print("  (No defaults set — columns left empty)")
 
-    return {"category": category, "madeby_name": madeby, "soldby_name": soldby}
+    return {
+        "category":     category,
+        "madeby_name":  madeby,
+        "soldby_name":  soldby,
+        "madeby_image": madeby_image,
+        "soldby_image": soldby_image,
+    }
 
 
 def apply_metadata(products: list, metadata: dict) -> list:
+    category = (metadata.get("category") or "").strip()
+    madeby_name = (metadata.get("madeby_name") or "").strip()
+    soldby_name = (metadata.get("soldby_name") or "").strip()
+    madeby_image = (metadata.get("madeby_image") or "").strip()
+    soldby_image = (metadata.get("soldby_image") or "").strip()
+
     for p in products:
-        if metadata["category"]:
-            p["category"] = metadata["category"]
-        if metadata["madeby_name"]:
-            p["madeby_name"] = metadata["madeby_name"]
-        if metadata["soldby_name"]:
-            p["soldby_name"] = metadata["soldby_name"]
+        if category:
+            p["category"] = category
+        if madeby_name:
+            p["madeby_name"] = madeby_name
+        if soldby_name:
+            p["soldby_name"] = soldby_name
+        if madeby_image:
+            p["madeby_image"] = madeby_image
+        if soldby_image:
+            p["soldby_image"] = soldby_image
         # soldby_link is auto-scraped — never overwritten by metadata
     return products
 

@@ -30,9 +30,11 @@ def scrape():
         return jsonify({"error": "URL is required"}), 400
 
     metadata = {
-        "category":    (data.get("category") or "").strip(),
-        "madeby_name": (data.get("madeby")   or "").strip(),
-        "soldby_name": (data.get("soldby")   or "").strip(),
+        "category":      (data.get("category")      or "").strip(),
+        "madeby_name":   (data.get("madeby")         or "").strip(),
+        "soldby_name":   (data.get("soldby")         or "").strip(),
+        "madeby_image":  (data.get("madeby_image")   or "").strip(),
+        "soldby_image":  (data.get("soldby_image")   or "").strip(),
     }
 
     try:

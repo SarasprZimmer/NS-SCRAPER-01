@@ -240,6 +240,14 @@
         <label for="soldby">Sold By</label>
         <input type="text" id="soldby" placeholder="e.g. Acme Roasters" />
       </div>
+      <div class="form-group">
+        <label for="madeby_image">Made By Logo URL</label>
+        <input type="url" id="madeby_image" placeholder="https://example.com/logo.png" autocomplete="off" />
+      </div>
+      <div class="form-group">
+        <label for="soldby_image">Sold By Logo URL</label>
+        <input type="url" id="soldby_image" placeholder="https://example.com/logo.png" autocomplete="off" />
+      </div>
     </div>
     <div class="btn-row">
       <button class="primary" id="scrape-btn" onclick="runScrape()">
@@ -283,7 +291,9 @@
               <th>Price</th>
               <th>Category</th>
               <th>Made By</th>
+              <th>Made By Logo</th>
               <th>Sold By</th>
+              <th>Sold By Logo</th>
               <th>Buy Link</th>
             </tr>
           </thead>
@@ -303,9 +313,10 @@
   async function runScrape() {
     const url     = document.getElementById('url').value.trim();
     const category = document.getElementById('category').value.trim();
-    const madeby   = document.getElementById('madeby').value.trim();
-    const soldby   = document.getElementById('soldby').value.trim();
-
+    const madeby       = document.getElementById('madeby').value.trim();
+    const soldby       = document.getElementById('soldby').value.trim();
+    const madeby_image = document.getElementById('madeby_image').value.trim();
+    const soldby_image = document.getElementById('soldby_image').value.trim();
 
     if (!url) { showStatus('error', 'Please enter a URL.'); return; }
 
@@ -317,7 +328,7 @@
       const res = await fetch('/scrape', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, category, madeby, soldby }),
+        body: JSON.stringify({ url, category, madeby, soldby, madeby_image, soldby_image }),
       });
       const json = await res.json();
 
@@ -383,7 +394,9 @@
       tr.appendChild(editableCell(i, 'price',       p.price,       '90px'));
       tr.appendChild(editableCell(i, 'category',    p.category,    '130px'));
       tr.appendChild(editableCell(i, 'madeby_name', p.madeby_name, '150px'));
+      tr.appendChild(linkCell(i, 'madeby_image', p.madeby_image, '180px'));
       tr.appendChild(editableCell(i, 'soldby_name', p.soldby_name, '150px'));
+      tr.appendChild(linkCell(i, 'soldby_image', p.soldby_image, '180px'));
       tr.appendChild(linkCell(i, 'soldby_link', p.soldby_link, '200px'));
 
       tbody.appendChild(tr);
@@ -394,7 +407,7 @@
   }
 
   // Special cell for URLs — shows a clickable preview icon + editable input
-  function linkCell(rowIdx, field, value, minWidth) {
+  function linkCell(rowIdx, field, value, minWidth, placeholder = 'Product URL') {
     const td = document.createElement('td');
     const wrap = document.createElement('div');
     wrap.style.cssText = 'display:flex;align-items:center;gap:6px;';
@@ -410,7 +423,7 @@
     const inp = document.createElement('input');
     inp.className = 'cell-input';
     inp.value = value || '';
-    inp.placeholder = 'Product URL';
+    inp.placeholder = placeholder;
     inp.style.minWidth = minWidth;
     inp.addEventListener('input', () => {
       tableData[rowIdx][field] = inp.value;
@@ -454,8 +467,14 @@
   function downloadCSV() {
     if (!tableData.length) return;
 
-    const COLS   = ['product_name', 'product_image', 'price', 'category', 'madeby_name', 'soldby_name', 'soldby_link'];
-    const LABELS = ['product_name', 'product_image', 'price', 'category', 'madeby_name', 'soldby_name', 'soldby_link'];
+    const COLS = [
+      'product_name', 'product_image', 'price', 'category',
+      'madeby_name', 'madeby_image', 'soldby_name', 'soldby_image', 'soldby_link',
+    ];
+    const LABELS = [
+      'product_name', 'product_image', 'price', 'category',
+      'madeby_name', 'madeby_image', 'soldby_name', 'soldby_image', 'soldby_link',
+    ];
 
     const escape = v => `"${(v || '').replace(/"/g, '""')}"`;
 
