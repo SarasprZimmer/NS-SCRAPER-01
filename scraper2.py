@@ -1041,6 +1041,9 @@ def prompt_metadata(products: list) -> dict:
     }
 
 
+FALLBACK_IMAGE = "https://www.test.northstarproject.org/static/media/appiconcrop3.a1bc55ceda3313f4778a.png"
+
+
 def apply_metadata(products: list, metadata: dict) -> list:
     category = (metadata.get("category") or "").strip()
     madeby_name = (metadata.get("madeby_name") or "").strip()
@@ -1060,6 +1063,14 @@ def apply_metadata(products: list, metadata: dict) -> list:
         if soldby_image:
             p["soldby_image"] = soldby_image
         # soldby_link is auto-scraped — never overwritten by metadata
+
+        if not p.get("product_image"):
+            p["product_image"] = FALLBACK_IMAGE
+        if not p.get("madeby_image"):
+            p["madeby_image"] = FALLBACK_IMAGE
+        if not p.get("soldby_image"):
+            p["soldby_image"] = FALLBACK_IMAGE
+
     return products
 
 
